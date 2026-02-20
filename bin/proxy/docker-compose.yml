@@ -1,0 +1,13 @@
+services:
+  warp:
+    image: caomingjun/warp
+    container_name: opencode-warp
+    restart: always
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    # 映射 SOCKS5 到本地 HTTP 代理端口
+    ports:
+      - "8118:1080"
+    environment:
+      - WARP_SLEEP=2
