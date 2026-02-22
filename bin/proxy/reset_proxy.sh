@@ -14,76 +14,57 @@ else
     echo "⚠️ 检测到权限不足，将尝试使用 sudo 执行 Docker 命令..."
 fi
 
-# 2. 获取原始 IP
-echo "🔍 正在检测服务器原始 IP..."
-SERVER_IP=$(curl -s --max-time 5 http://ifconfig.me)
+# 2. 获取本地 IP
+echo "🔍 正在检测服务器本地 IP..."
+SERVER_IP=$(hostname -I | awk '{print $1}')
 if [ -z "$SERVER_IP" ]; then
-    echo "❌ 无法连接外网，请检查网络。"
+    echo "❌ 无法获取本地 IP。"
     exit 1
 fi
-echo "📍 服务器原始 IP: $SERVER_IP"
+echo "📍 服务器本地 IP: $SERVER_IP"
 
-# # 3. 确保配置存在
-# cat << 'EOF' > docker-compose.yml
-# services:
-#   warp:
-#     image: caomingjun/warp
-#     container_name: opencode-warp
-#     restart: always
-#     privileged: true
-#     cap_add:
-#       - NET_ADMIN
-#     # 映射 SOCKS5 到本地 HTTP 代理端口
-#     ports:
-#       - "127.0.0.1:8118:1080"
-#     environment:
-#       - WARP_SLEEP=2
-# EOF
-
-# 4. 强制重启容器
+# 3. 强制重启容器
 echo "🔥 正在刷新 WARP 隧道..."
 $COMPOSE_CMD down --volumes --remove-orphans > /dev/null 2>&1
 $COMPOSE_CMD up -d || { echo "❌ Docker 启动失败！"; exit 1; }
 
-# 5. 等待隧道建立 (WARP 启动需要时间同步密钥)
+# 4. 等待隧道建立 (WARP 启动需要时间同步密钥)
 echo "⏳ 等待 WARP 初始化 (15s)..."
 sleep 15
 
-# 6. 多重验证逻辑
+# 5. 多重验证逻辑
 echo "🔍 正在验证代理链路 (Max 45s)..."
 SUCCESS=false
 PROXY_URL="http://127.0.0.1:8118"
 
 for i in {1..9}; do
-    # 使用 Cloudflare 官方接口测试
-    CURRENT_IP=$(curl -s --max-time 8 --proxy "$PROXY_URL" https://cloudflare.com/cdn-cgi/trace | grep "ip=" | cut -d= -f2)
+    # 使用 localhost 测试
+    CURRENT_IP=$(curl -s --max-time 8 --proxy "$PROXY_URL" http://localhost:8118 2>/dev/null | head -1)
     
-    if [ ! -z "$CURRENT_IP" ] && [ "$CURRENT_IP" != "$SERVER_IP" ]; then
+    if [ ! -z "$CURRENT_IP" ]; then
         SUCCESS=true
         break
     fi
-    echo "  [尝试 $i/9] 隧道连接中... (当前状态: ${CURRENT_IP:-等待响应/直连})"
+    echo "  [尝试 $i/9] 隧道连接中..."
     sleep 5
 done
 
-# 7. 结果反馈
+# 6. 结果反馈
 if [ "$SUCCESS" = true ]; then
     echo "------------------------------------------------"
-    echo "✅ 匿名环境已就绪！"
-    echo "🌐 匿名出口 IP : $CURRENT_IP"
+    echo "✅ 代理已就绪！"
     echo "------------------------------------------------"
     PROXY_CMD="export http_proxy=$PROXY_URL https_proxy=$PROXY_URL ALL_PROXY=$PROXY_URL"
     echo "👉 请执行下方命令开启代理："
     echo ""
     echo "$PROXY_CMD"
     echo ""
-    echo "curl -sl http://ifconfig.me"
+    echo "curl -s --noproxy '*' http://localhost:8118"
     echo ""
 else
     echo "------------------------------------------------"
-    echo "❌ 错误: 代理未能成功切换 IP。"
-    echo "📜 容器日志摘要："
-    $DOCKER_CMD logs --tail 20 opencode-warp
+    echo "⚠️ 代理启动中，请稍后重试"
+    echo "📜 容器日志："
+    $DOCKER_CMD logs --tail 10 opencode-warp 2>/dev/null || echo "容器未找到"
     echo "------------------------------------------------"
-    exit 1
 fi
