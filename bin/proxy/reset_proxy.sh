@@ -10,7 +10,7 @@ if docker ps >/dev/null 2>&1; then
     COMPOSE_CMD="docker-compose"
 else
     DOCKER_CMD="sudo docker"
-    COMPOSE_CMD="sudo docker-compose"
+    COMPOSE_CMD="sudo docker compose"
     echo "⚠️ 检测到权限不足，将尝试使用 sudo 执行 Docker 命令..."
 fi
 
